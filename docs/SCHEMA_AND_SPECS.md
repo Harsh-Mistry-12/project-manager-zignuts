@@ -105,3 +105,4 @@ This document specifies the complete production-grade architecture, database sch
 | Manual Time Logging (Assigned Projects) | Full Access | Allowed | Allowed |
 | Daily Punch Log & Hours View | Full Access | Own logs | Own logs |
 | AI Assistant (RAG) | All Projects & Logs | Own Managed Projects | Assigned Projects Only |
+

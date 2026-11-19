@@ -23,16 +23,20 @@ def get_authorized_projects(db: Session, user: User) -> List[Project]:
         ).subquery()
         return db.query(Project).filter(Project.id.in_(assigned_project_ids)).all()
 
-def project_name_matches(project_name: str, query_lower: str) -> bool:
-    """Checks if project name, base name, or client name is mentioned in the query."""
-    p_full = project_name.lower()
-    # e.g., "project alpha (fintech app)" -> "project alpha", "alpha"
+def project_matches_query(project: Project, query_lower: str) -> bool:
+    """Checks if project name, base name, or client name is referenced in the query."""
+    p_full = project.name.lower()
     base_name = p_full.split("(")[0].strip()
     parentheses_part = p_full.split("(")[1].replace(")", "").strip() if "(" in p_full else ""
+    client_name = project.client_name.lower() if project.client_name else ""
 
-    candidates = [p_full, base_name]
+    candidates = [p_full, base_name, client_name]
     if parentheses_part:
         candidates.append(parentheses_part)
+
+    # Also check distinct first word of client if > 3 chars (e.g. "Nova" from "Nova Retail Ltd")
+    client_words = [w for w in client_name.split() if len(w) > 3]
+    candidates.extend(client_words)
 
     for c in candidates:
         if len(c) > 2 and (c in query_lower or re.search(r'\b' + re.escape(c) + r'\b', query_lower)):
@@ -44,7 +48,7 @@ def check_rbac_permission_for_query(
 ) -> Tuple[bool, Optional[str], List[Project]]:
     """
     Scans the query against all projects in the database.
-    If the user mentions or asks about a project they do NOT have permission for,
+    If the user mentions or asks about a project or client they do NOT have permission for,
     returns (False, project_name, []).
     Otherwise returns (True, None, authorized_projects).
     """
@@ -54,9 +58,9 @@ def check_rbac_permission_for_query(
 
     query_lower = query_text.lower()
 
-    # Check if query references any unauthorized project
+    # Check if query references any unauthorized project or client
     for project in all_projects:
-        if project_name_matches(project.name, query_lower):
+        if project_matches_query(project, query_lower):
             if project.id not in authorized_ids:
                 return False, project.name, []
 
@@ -162,7 +166,7 @@ def fallback_deterministic_rag_answer(db: Session, projects: List[Project], quer
     # Identify which authorized project the user is querying
     matched_project = None
     for p in projects:
-        if project_name_matches(p.name, q):
+        if project_matches_query(p, q):
             matched_project = p
             break
 

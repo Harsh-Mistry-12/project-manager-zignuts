@@ -205,7 +205,11 @@ def assign_members_to_project(
     db.query(ProjectMember).filter(ProjectMember.project_id == project.id).delete()
 
     for uid in payload.user_ids:
-        user = db.query(User).filter(User.id == uid, User.is_deleted == False).first()
+        user = db.query(User).filter(
+            User.id == uid,
+            User.is_deleted == False,
+            User.is_active == True
+        ).first()
         if user:
             assignment = ProjectMember(project_id=project.id, user_id=user.id)
             db.add(assignment)

@@ -41,6 +41,13 @@ def update_user_status_or_role(
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Safety guard: Prevent admin self-deactivation or self-demotion
+    if target_user.id == current_user.id:
+        if payload.is_active is False:
+            raise HTTPException(status_code=400, detail="Admins cannot deactivate their own account.")
+        if payload.role_name and payload.role_name.lower().strip() != "admin":
+            raise HTTPException(status_code=400, detail="Admins cannot revoke their own admin role.")
+
     old_values = {
         "is_active": target_user.is_active,
         "role": target_user.role.role_name if target_user.role else None

@@ -196,3 +196,4 @@ def get_daily_punch_sessions(
         active_session=build_punch_response(active) if active else None,
         sessions=[build_punch_response(s) for s in sessions]
     )
+

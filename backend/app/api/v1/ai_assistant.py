@@ -40,3 +40,4 @@ async def query_ai_assistant(
     )
 
     return AIQueryResponse(**result)
+

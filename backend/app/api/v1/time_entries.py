@@ -38,6 +38,10 @@ def get_time_entries(
     - PM: entries for projects managed by PM
     - Member: only their own entries
     """
+    # If a specific project is requested, explicitly verify RBAC access
+    if project_id is not None:
+        deps.verify_project_access(project_id, current_user, db)
+
     user_role = current_user.role.role_name if current_user.role else "member"
     query = db.query(TimeEntry).filter(TimeEntry.is_deleted == False)
 
@@ -114,14 +118,34 @@ def delete_time_entry(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    """Soft delete time entry (own entry or PM/Admin)."""
+    """
+    Soft delete time entry:
+    - Admin: can delete any entry
+    - PM: can delete entries ONLY for projects they manage (or their own entry)
+    - Member: can delete ONLY their own time entries
+    """
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.is_deleted == False).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Time entry not found")
 
     user_role = current_user.role.role_name if current_user.role else "member"
-    if user_role not in ["admin", "pm"] and entry.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Forbidden: You can only delete your own time entries")
+    if user_role == "admin":
+        pass  # Admin allowed
+    elif user_role == "pm":
+        # PM can delete if they manage this project OR if they created the entry
+        project = db.query(Project).filter(Project.id == entry.project_id).first()
+        is_manager = project and (project.created_by == current_user.id or project.assigned_pm_id == current_user.id)
+        if not is_manager and entry.user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: You cannot delete time entries for projects you do not manage."
+            )
+    else:  # Member
+        if entry.user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: You can only delete your own time entries."
+            )
 
     entry.is_deleted = True
     entry.deleted_at = datetime.utcnow()

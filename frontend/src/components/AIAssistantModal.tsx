@@ -235,3 +235,4 @@ export default function AIAssistantModal({ isOpen, onClose }: AIAssistantModalPr
     </div>
   );
 }
+

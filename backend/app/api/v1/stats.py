@@ -114,3 +114,4 @@ def get_organization_stats_summary(
         "over_cap_projects": over_cap_count,
         "current_month_name": now.strftime("%B %Y")
     }
+

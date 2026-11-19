@@ -442,3 +442,4 @@ export default function PunchClock({ onSessionChange }: PunchClockProps) {
     </div>
   );
 }
+

@@ -82,3 +82,4 @@ def verify_project_access(project_id: int, user: User, db: Session) -> Project:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: You are not assigned to this project."
         )
+

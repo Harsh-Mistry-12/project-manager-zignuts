@@ -33,3 +33,4 @@ def log_audit(
     db.add(log_entry)
     db.commit()
     return log_entry
+

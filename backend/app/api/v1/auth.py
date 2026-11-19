@@ -125,3 +125,4 @@ def login_json(payload: UserLogin, request: Request, db: Session = Depends(deps.
 @router.get("/me", response_model=UserResponse)
 def read_current_user(current_user: User = Depends(deps.get_current_user)):
     return build_user_response(current_user)
+

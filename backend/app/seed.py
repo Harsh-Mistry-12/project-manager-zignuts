@@ -179,3 +179,4 @@ def seed_database(db: Session):
             notes="Morning feature sprint & code reviews"
         ))
         db.commit()
+
