@@ -103,8 +103,18 @@ def create_project(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.require_roles(["admin", "pm"]))
 ):
-    """PM or Admin creates a new retainer project with monthly hour cap."""
-    assigned_pm = payload.assigned_pm_id if payload.assigned_pm_id else current_user.id
+    """PM or Admin creates a new retainer project with monthly hour cap, assigned PM, and members."""
+    user_role = current_user.role.role_name if current_user.role else "member"
+
+    # Admin can assign to any PM; PM defaults to self
+    assigned_pm = current_user.id
+    if user_role == "admin" and payload.assigned_pm_id:
+        pm_user = db.query(User).filter(
+            User.id == payload.assigned_pm_id,
+            User.is_deleted == False
+        ).first()
+        if pm_user:
+            assigned_pm = pm_user.id
 
     new_project = Project(
         name=payload.name.strip(),
@@ -118,6 +128,20 @@ def create_project(
     db.commit()
     db.refresh(new_project)
 
+    # Assign team members if provided
+    if payload.member_ids:
+        for uid in payload.member_ids:
+            user = db.query(User).filter(
+                User.id == uid,
+                User.is_deleted == False,
+                User.is_active == True
+            ).first()
+            if user:
+                assignment = ProjectMember(project_id=new_project.id, user_id=user.id)
+                db.add(assignment)
+        db.commit()
+        db.refresh(new_project)
+
     log_audit(
         db=db,
         action="PROJECT_CREATE",
@@ -127,7 +151,9 @@ def create_project(
         new_values={
             "name": new_project.name,
             "client": new_project.client_name,
-            "monthly_hourly_cap": float(new_project.monthly_hourly_cap)
+            "monthly_hourly_cap": float(new_project.monthly_hourly_cap),
+            "assigned_pm_id": assigned_pm,
+            "member_ids": payload.member_ids or []
         },
         request=request
     )

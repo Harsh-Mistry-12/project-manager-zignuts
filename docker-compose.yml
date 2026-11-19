@@ -7,16 +7,16 @@ services:
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password
     environment:
-      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_ROOT_PASSWORD: ''
       MYSQL_DATABASE: project_manager_db
-      MYSQL_USER: app_user
-      MYSQL_PASSWORD: app_password
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ''
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "app_user", "-papp_password"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "app_user", "-papp_password" ]
       interval: 5s
       timeout: 5s
       retries: 10

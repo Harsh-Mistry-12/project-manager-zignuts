@@ -48,6 +48,7 @@ class ProjectCreate(BaseModel):
     monthly_hourly_cap: float = 160.0
     budget: Optional[float] = None
     assigned_pm_id: Optional[int] = None
+    member_ids: Optional[List[int]] = []
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
