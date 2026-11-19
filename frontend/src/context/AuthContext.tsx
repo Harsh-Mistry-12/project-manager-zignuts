@@ -22,7 +22,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem("auth_token");
+    // Failsafe timer: ensure loading never hangs indefinitely
+    const failsafe = setTimeout(() => {
+      setLoading(false);
+    }, 3500);
+
+    const savedToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     if (savedToken) {
       setToken(savedToken);
       apiFetch<User>("/auth/me", {}, savedToken)
@@ -30,14 +35,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(userData);
         })
         .catch(() => {
-          localStorage.removeItem("auth_token");
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("auth_token");
+          }
           setToken(null);
           setUser(null);
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          clearTimeout(failsafe);
+          setLoading(false);
+        });
     } else {
+      clearTimeout(failsafe);
       setLoading(false);
     }
+
+    return () => clearTimeout(failsafe);
   }, []);
 
   const login = async (email: string, password: string) => {
