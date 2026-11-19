@@ -92,7 +92,7 @@ export default function AIAssistantModal({ isOpen, onClose }: AIAssistantModalPr
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl h-[85vh] sm:h-[650px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl h-[90vh] sm:h-[650px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-2.5">

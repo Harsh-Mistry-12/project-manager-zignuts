@@ -213,7 +213,7 @@ export default function Home() {
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
                 1-Click Quick Demo Sign-In:
               </span>
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                 <button
                   onClick={() => quickLogin("admin@zignuts.com")}
                   className="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-left transition flex items-center gap-2"
@@ -302,7 +302,7 @@ export default function Home() {
       />
 
       {/* Main App Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {activeTab === "dashboard" && (
           <>
             {user.role_name === "admin" && <AdminPanel />}
@@ -324,7 +324,7 @@ export default function Home() {
       </main>
 
       {/* Floating AI Assistant Trigger Button in bottom corner */}
-      <div className="fixed bottom-6 right-6 z-40">
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40">
         <button
           onClick={() => setShowAIModal(true)}
           className="group flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl shadow-indigo-600/30 transition transform hover:-translate-y-0.5"

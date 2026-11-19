@@ -228,8 +228,8 @@ export default function PunchClock({ onSessionChange }: PunchClockProps) {
             </div>
 
             {/* Timer Display */}
-            <div className="my-6 text-center">
-              <div className="text-4xl font-extrabold tracking-tight font-mono text-slate-900">
+            <div className="my-5 sm:my-6 text-center">
+              <div className="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono text-slate-900">
                 {activeSession ? formatElapsed(elapsedSeconds) : "00:00:00"}
               </div>
               <p className="text-xs text-slate-500 mt-1">
@@ -370,7 +370,7 @@ export default function PunchClock({ onSessionChange }: PunchClockProps) {
                   No punch sessions logged for {selectedDate}.
                 </div>
               ) : (
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full min-w-[540px] text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                       <th className="py-2.5 px-3">Project / Client</th>

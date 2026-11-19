@@ -201,13 +201,13 @@ export default function AdminPanel() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button
               onClick={() => setShowCreateModal(true)}
               className="py-2 px-3.5 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition shadow-sm flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
-              Create Project
+              <span>Create Project</span>
             </button>
 
             <button
@@ -219,10 +219,10 @@ export default function AdminPanel() {
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </button>
 
-            <div className="bg-slate-100 p-1 rounded-xl flex text-xs font-semibold">
+            <div className="bg-slate-100 p-1 rounded-xl flex overflow-x-auto text-xs font-semibold max-w-full">
               <button
                 onClick={() => setActiveSubTab("projects")}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
                   activeSubTab === "projects"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -232,7 +232,7 @@ export default function AdminPanel() {
               </button>
               <button
                 onClick={() => setActiveSubTab("users")}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
                   activeSubTab === "users"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -242,7 +242,7 @@ export default function AdminPanel() {
               </button>
               <button
                 onClick={() => setActiveSubTab("audit")}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
                   activeSubTab === "audit"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -273,7 +273,7 @@ export default function AdminPanel() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">

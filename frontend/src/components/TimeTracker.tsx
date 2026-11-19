@@ -213,7 +213,7 @@ export default function TimeTracker() {
                 No time entries logged yet.
               </div>
             ) : (
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full min-w-[500px] text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                     <th className="py-2.5 px-3">Date</th>

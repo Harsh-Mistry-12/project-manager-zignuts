@@ -182,12 +182,12 @@ export default function PMPanel() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Sub Tabs */}
-            <div className="bg-slate-100 p-1 rounded-xl flex text-xs font-semibold">
+            <div className="bg-slate-100 p-1 rounded-xl flex overflow-x-auto text-xs font-semibold">
               <button
                 onClick={() => setActiveSubTab("projects")}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
                   activeSubTab === "projects"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -197,7 +197,7 @@ export default function PMPanel() {
               </button>
               <button
                 onClick={() => setActiveSubTab("user-management")}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
                   activeSubTab === "user-management"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -212,7 +212,7 @@ export default function PMPanel() {
               className="py-2 px-3.5 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
-              New Project
+              <span>New Project</span>
             </button>
           </div>
         </div>
@@ -434,7 +434,7 @@ export default function PMPanel() {
                   {loadingHeatmap ? (
                     <div className="py-8 text-center text-xs text-slate-400">Loading annual heatmap...</div>
                   ) : (
-                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
                       {heatmapData?.months.map((m) => {
                         let bgStyle = "bg-slate-50 border-slate-200 text-slate-700";
                         if (m.logged_hours > 0) {
