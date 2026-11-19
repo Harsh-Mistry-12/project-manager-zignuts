@@ -1,3 +1,4 @@
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,17 +11,24 @@ from app.seed import seed_database
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create tables if not exist
-    try:
-        Base.metadata.create_all(bind=engine)
-        # Seed default data
-        db = SessionLocal()
+    # Startup: Connect to DB with retries, create tables and seed default data
+    max_retries = 15
+    for attempt in range(1, max_retries + 1):
         try:
-            seed_database(db)
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"[Warning] Database initialization notice: {e}")
+            Base.metadata.create_all(bind=engine)
+            db = SessionLocal()
+            try:
+                seed_database(db)
+            finally:
+                db.close()
+            print("[Database] Successfully connected, tables verified, and seed completed.")
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                print(f"[Warning] Database initialization failed after {max_retries} attempts: {e}")
+            else:
+                print(f"[Database] Waiting for database connection (attempt {attempt}/{max_retries}): {e}")
+                time.sleep(2)
     yield
 
 app = FastAPI(
