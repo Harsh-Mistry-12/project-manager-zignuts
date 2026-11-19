@@ -279,3 +279,164 @@ def test_15_pm_can_add_users_but_not_pm_or_admin():
         "role_name": "admin"
     })
     assert res_admin_denied.status_code == 403
+
+def test_16_rag_user_hierarchy_member_restrictions():
+    """Verify Member can only query their own info, and cannot query other users, PMs, or Admins."""
+    token_dev1 = get_token("dev1@zignuts.com").json()["access_token"]
+
+    # 1. Member asking about their own info -> Allowed
+    res_self = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_dev1}"}, json={
+        "query": "Tell me about my profile and info"
+    })
+    assert res_self.status_code == 200
+    data_self = res_self.json()
+    assert data_self["is_allowed"] is True
+    assert "Harsh Patel" in data_self["answer"]
+    assert "dev1@zignuts.com" in data_self["answer"]
+
+    # 2. Member asking about their own personal hours -> Allowed
+    res_hrs = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_dev1}"}, json={
+        "query": "How many hours have I logged in January 2026?"
+    })
+    assert res_hrs.status_code == 200
+    data_hrs = res_hrs.json()
+    assert data_hrs["is_allowed"] is True
+    assert "45.0 hours" in data_hrs["answer"]
+
+    # 3. Member asking about their punch status -> Allowed
+    res_punch = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_dev1}"}, json={
+        "query": "What is my punch status?"
+    })
+    assert res_punch.status_code == 200
+    assert res_punch.json()["is_allowed"] is True
+
+    # 4. Member asking about another member (Elena Rostova) -> Denied
+    res_elena = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_dev1}"}, json={
+        "query": "Tell me about Elena Rostova"
+    })
+    assert res_elena.status_code == 200
+    data_elena = res_elena.json()
+    assert data_elena["is_allowed"] is False
+    assert "Access Denied" in data_elena["answer"]
+
+    # 5. Member asking about a PM (Alex Vance) -> Denied
+    res_pm = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_dev1}"}, json={
+        "query": "Tell me about Alex Vance"
+    })
+    assert res_pm.status_code == 200
+    data_pm = res_pm.json()
+    assert data_pm["is_allowed"] is False
+    assert "Access Denied" in data_pm["answer"]
+
+    # 6. Member asking about Admin (Sarah Connor) -> Denied
+    res_admin = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_dev1}"}, json={
+        "query": "Tell me about Sarah Connor"
+    })
+    assert res_admin.status_code == 200
+    data_admin = res_admin.json()
+    assert data_admin["is_allowed"] is False
+    assert "Access Denied" in data_admin["answer"]
+
+    # 7. Member asking to list all users -> Denied
+    res_list = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_dev1}"}, json={
+        "query": "List all users in the system"
+    })
+    assert res_list.status_code == 200
+    data_list = res_list.json()
+    assert data_list["is_allowed"] is False
+    assert "Access Denied" in data_list["answer"]
+
+def test_17_rag_user_hierarchy_pm_restrictions():
+    """Verify PM can query their own info and assigned users, but cannot query Admins or other PMs."""
+    token_pm1 = get_token("pm1@zignuts.com").json()["access_token"]
+
+    # 1. PM querying their own info -> Allowed
+    res_self = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "query": "Tell me about my info"
+    })
+    assert res_self.status_code == 200
+    data_self = res_self.json()
+    assert data_self["is_allowed"] is True
+    assert "Alex Vance" in data_self["answer"]
+
+    # 2. PM querying regular team member (Harsh Patel) -> Allowed
+    res_member = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "query": "Tell me about Harsh Patel"
+    })
+    assert res_member.status_code == 200
+    data_member = res_member.json()
+    assert data_member["is_allowed"] is True
+    assert "Harsh Patel" in data_member["answer"]
+    assert "dev1@zignuts.com" in data_member["answer"]
+
+    # 3. PM querying team member hours -> Allowed
+    res_member_hrs = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "query": "How many hours did Harsh Patel log on Project Alpha in January 2026?"
+    })
+    assert res_member_hrs.status_code == 200
+    data_hrs = res_member_hrs.json()
+    assert data_hrs["is_allowed"] is True
+    assert "45.0 hours" in data_hrs["answer"]
+
+    # 4. PM querying team members directory -> Allowed
+    res_members_list = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "query": "List users in my team"
+    })
+    assert res_members_list.status_code == 200
+    assert res_members_list.json()["is_allowed"] is True
+
+    # 5. PM querying Admin (Sarah Connor) -> Denied
+    res_admin = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "query": "Tell me about Sarah Connor"
+    })
+    assert res_admin.status_code == 200
+    data_admin = res_admin.json()
+    assert data_admin["is_allowed"] is False
+    assert "Access Denied" in data_admin["answer"]
+
+    # 6. PM querying another PM (Gordon Freeman) -> Denied
+    res_pm2 = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "query": "Tell me about Gordon Freeman"
+    })
+    assert res_pm2.status_code == 200
+    data_pm2 = res_pm2.json()
+    assert data_pm2["is_allowed"] is False
+    assert "Access Denied" in data_pm2["answer"]
+
+def test_18_rag_user_hierarchy_admin_full_access():
+    """Verify Admin can query anyone (Members, PMs, Admins) and view entire directory."""
+    token_admin = get_token("admin@zignuts.com").json()["access_token"]
+
+    # 1. Admin querying another Admin -> Allowed
+    res_admin = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_admin}"}, json={
+        "query": "Tell me about Sarah Connor"
+    })
+    assert res_admin.status_code == 200
+    assert res_admin.json()["is_allowed"] is True
+
+    # 2. Admin querying PM Gordon Freeman -> Allowed
+    res_pm = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_admin}"}, json={
+        "query": "Tell me about Gordon Freeman"
+    })
+    assert res_pm.status_code == 200
+    data_pm = res_pm.json()
+    assert data_pm["is_allowed"] is True
+    assert "Gordon Freeman" in data_pm["answer"]
+
+    # 3. Admin querying regular member -> Allowed
+    res_member = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_admin}"}, json={
+        "query": "Tell me about Harsh Patel"
+    })
+    assert res_member.status_code == 200
+    assert res_member.json()["is_allowed"] is True
+
+    # 4. Admin querying full user directory -> Allowed
+    res_all = client.post("/api/v1/ai/query", headers={"Authorization": f"Bearer {token_admin}"}, json={
+        "query": "List all users in the system"
+    })
+    assert res_all.status_code == 200
+    data_all = res_all.json()
+    assert data_all["is_allowed"] is True
+    assert "Sarah Connor" in data_all["answer"]
+    assert "Gordon Freeman" in data_all["answer"]
+    assert "Harsh Patel" in data_all["answer"]

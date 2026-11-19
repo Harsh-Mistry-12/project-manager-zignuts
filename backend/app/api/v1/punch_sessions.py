@@ -47,6 +47,9 @@ def punch_in(
     Punch In: User MUST select a project they are assigned to.
     Rejects if user already has an active punch session.
     """
+    # Punch-in always stamps the current UTC time, so sessions are inherently
+    # created for today only. No past-date punch-in is possible via this endpoint.
+
     # 1. Check if user already has an active session
     active_existing = db.query(PunchSession).filter(
         PunchSession.user_id == current_user.id,

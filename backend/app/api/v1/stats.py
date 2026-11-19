@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.api import deps
 from app.models.models import Project, TimeEntry, User
-from app.schemas.schemas import ProjectAnnualHeatmap, HeatmapMonth
+from app.schemas.schemas import (
+    ProjectAnnualHeatmap, HeatmapMonth,
+    UserProjectMetricsResponse, UserMonthMetric
+)
 
 router = APIRouter()
 
@@ -114,4 +117,85 @@ def get_organization_stats_summary(
         "over_cap_projects": over_cap_count,
         "current_month_name": now.strftime("%B %Y")
     }
+
+@router.get("/project/{project_id}/user/{user_id}", response_model=UserProjectMetricsResponse)
+def get_user_project_metrics(
+    project_id: int,
+    user_id: int,
+    year: Optional[int] = Query(None, description="Target year, defaults to current year"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Returns month-wise logged hours and cap utilization for a specific user on a project.
+    """
+    project = deps.verify_project_access(project_id, current_user, db)
+    target_user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_year = year or datetime.utcnow().year
+    monthly_cap = float(project.monthly_hourly_cap) if project.monthly_hourly_cap else 160.0
+    now = datetime.utcnow()
+
+    # Query entries for this project, user, and year grouped by month
+    monthly_query = db.query(
+        func.extract('month', TimeEntry.date).label('month_num'),
+        func.coalesce(func.sum(TimeEntry.hours), 0.0).label('total_hours')
+    ).filter(
+        TimeEntry.project_id == project.id,
+        TimeEntry.user_id == target_user.id,
+        TimeEntry.is_deleted == False,
+        func.extract('year', TimeEntry.date) == target_year
+    ).group_by(func.extract('month', TimeEntry.date)).all()
+
+    logged_by_month = {int(row.month_num): float(row.total_hours) for row in monthly_query}
+
+    months_list = []
+    total_year = 0.0
+    current_month_hours = 0.0
+
+    for m in range(1, 13):
+        logged = round(logged_by_month.get(m, 0.0), 2)
+        total_year += logged
+        if m == now.month and target_year == now.year:
+            current_month_hours = logged
+
+        pct = round((logged / monthly_cap * 100.0), 1) if monthly_cap > 0 else 0.0
+
+        if pct > 100.0:
+            status = "over_cap"
+        elif pct >= 90.0:
+            status = "warning"
+        else:
+            status = "normal"
+
+        months_list.append(
+            UserMonthMetric(
+                month=m,
+                year=target_year,
+                month_name=calendar.month_name[m],
+                logged_hours=logged,
+                monthly_cap=monthly_cap,
+                cap_utilization=pct,
+                status=status
+            )
+        )
+
+    cur_utilization = round((current_month_hours / monthly_cap * 100.0), 1) if monthly_cap > 0 else 0.0
+
+    return UserProjectMetricsResponse(
+        user_id=target_user.id,
+        user_name=target_user.full_name,
+        user_email=target_user.email,
+        project_id=project.id,
+        project_name=project.name,
+        client_name=project.client_name,
+        monthly_hourly_cap=monthly_cap,
+        current_month_hours=round(current_month_hours, 2),
+        current_month_utilization=cur_utilization,
+        total_year_hours=round(total_year, 2),
+        months=months_list
+    )
+
 

@@ -1,12 +1,19 @@
 import re
 import calendar
-from datetime import datetime
+from datetime import datetime, date
 from typing import Dict, Any, List, Tuple, Optional
 import httpx
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from app.models.models import Project, ProjectMember, TimeEntry, User
+from sqlalchemy import func, extract
+from app.models.models import Project, ProjectMember, TimeEntry, User, PunchSession, Role
 from app.core.config import settings
+
+# Role hierarchy levels: Member (1) < PM (2) < Admin (3)
+ROLE_LEVELS: Dict[str, int] = {
+    "member": 1,
+    "pm": 2,
+    "admin": 3
+}
 
 def get_authorized_projects(db: Session, user: User) -> List[Project]:
     """Retrieve only projects that the current user has rights to view."""
@@ -20,8 +27,9 @@ def get_authorized_projects(db: Session, user: User) -> List[Project]:
     else:  # member
         assigned_project_ids = db.query(ProjectMember.project_id).filter(
             ProjectMember.user_id == user.id
-        ).subquery()
-        return db.query(Project).filter(Project.id.in_(assigned_project_ids)).all()
+        ).all()
+        project_ids = [p[0] for p in assigned_project_ids]
+        return db.query(Project).filter(Project.id.in_(project_ids)).all()
 
 def project_matches_query(project: Project, query_lower: str) -> bool:
     """Checks if project name, base name, or client name is referenced in the query."""
@@ -43,39 +51,182 @@ def project_matches_query(project: Project, query_lower: str) -> bool:
             return True
     return False
 
+def find_referenced_users(db: Session, query: str) -> List[User]:
+    """
+    Finds all User records whose full name, email, or distinct first/last name
+    is explicitly referenced in the user query.
+    """
+    all_users = db.query(User).filter(User.is_deleted == False).all()
+    q_lower = query.lower()
+    matched = []
+
+    for u in all_users:
+        u_name = u.full_name.lower()
+        # Remove parenthetical tags like '(Admin)', '(Senior Dev)', '(PM - ...)'
+        clean_name = re.sub(r'\(.*?\)', '', u_name).strip()
+        email_prefix = u.email.split("@")[0].lower()
+
+        # 1. Match full clean name
+        if len(clean_name) > 3 and (clean_name in q_lower or re.search(r'\b' + re.escape(clean_name) + r'\b', q_lower)):
+            if u not in matched:
+                matched.append(u)
+            continue
+
+        # 2. Match email or email username prefix
+        if u.email.lower() in q_lower or (len(email_prefix) > 3 and re.search(r'\b' + re.escape(email_prefix) + r'\b', q_lower)):
+            if u not in matched:
+                matched.append(u)
+            continue
+
+        # 3. Match distinct first or last name words
+        parts = [p.strip() for p in clean_name.split() if len(p.strip()) > 3]
+        for part in parts:
+            if part in ["with", "from", "user", "role", "time", "date", "what", "hours", "info", "show", "tell"]:
+                continue
+            if re.search(r'\b' + re.escape(part) + r'\b', q_lower):
+                if u not in matched:
+                    matched.append(u)
+                break
+
+    return matched
+
 def check_rbac_permission_for_query(
     db: Session, user: User, query_text: str
-) -> Tuple[bool, Optional[str], List[Project]]:
+) -> Tuple[bool, Optional[str], List[Project], List[User]]:
     """
-    Scans the query against all projects in the database.
-    If the user mentions or asks about a project or client they do NOT have permission for,
-    returns (False, project_name, []).
-    Otherwise returns (True, None, authorized_projects).
+    Comprehensive RBAC Security Gatekeeper:
+    - User/Member: Can only know their own info & assigned projects. Cannot query other users, PMs, or Admins.
+    - PM: Can know their own info, assigned members' info, and their projects. Cannot query Admin or other PMs.
+    - Admin: Can know everyone's info (Members, PMs, Admins, all projects).
+    Returns (is_allowed, denial_reason, authorized_projects, referenced_users).
     """
     all_projects = db.query(Project).all()
     authorized_projects = get_authorized_projects(db, user)
-    authorized_ids = {p.id for p in authorized_projects}
+    authorized_project_ids = {p.id for p in authorized_projects}
 
-    query_lower = query_text.lower()
+    caller_role = user.role.role_name if user.role else "member"
+    caller_level = ROLE_LEVELS.get(caller_role, 1)
+    q_lower = query_text.lower()
 
-    # Check if query references any unauthorized project or client
+    # 1. Check Project-level RBAC
     for project in all_projects:
-        if project_matches_query(project, query_lower):
-            if project.id not in authorized_ids:
-                return False, project.name, []
+        if project_matches_query(project, q_lower):
+            if project.id not in authorized_project_ids:
+                role_label = "Project Managers" if caller_role == "pm" else "Team Members"
+                denial = (
+                    f"I cannot provide information regarding '{project.name}'. "
+                    f"{role_label} are only permitted to view and query their own assigned projects. "
+                    f"If you believe you should have access to this project, please consult your Organization Administrator."
+                )
+                return False, denial, [], []
 
-    return True, None, authorized_projects
+    # 2. Check User-level Hierarchy RBAC
+    matched_users = find_referenced_users(db, query_text)
 
-def build_knowledge_context(db: Session, projects: List[Project], user: User) -> str:
-    """Builds a grounded text context containing project stats, hours by month, PMs, and members."""
+    # A. User / Member restrictions: Can only know their own info
+    if caller_level == 1:  # Member
+        # Check if asked about higher-level roles generically
+        generic_higher_roles = ["admin", "administrator", "project manager", "pms"]
+        for hr in generic_higher_roles:
+            if re.search(r'\b' + re.escape(hr) + r'\b', q_lower):
+                # Allow question if asking who manages their assigned project (e.g. "who is the project manager for Project Alpha")
+                is_pm_question_for_own_project = any(
+                    phrase in q_lower for phrase in ["project manager for", "who is pm for", "who manages", "who is managing"]
+                ) and any(project_matches_query(p, q_lower) for p in authorized_projects)
+
+                if not is_pm_question_for_own_project:
+                    denial = (
+                        "Access Denied: As a Team Member, you can only access your own personal information, "
+                        "time logs, and assigned projects. Inquiries regarding higher-level personnel "
+                        "(Project Managers and Administrators) or other team members are restricted."
+                    )
+                    return False, denial, authorized_projects, []
+
+        # Check if asking to list all users / directory
+        if any(phrase in q_lower for phrase in ["list users", "all users", "show users", "show all members", "team list", "employee list"]):
+            denial = (
+                "Access Denied: Team Members are only permitted to query their own user account and hours. "
+                "Company-wide user directories are restricted to Project Managers and Administrators."
+            )
+            return False, denial, authorized_projects, []
+
+        # Check referenced users: Members CANNOT ask about other users
+        for target_u in matched_users:
+            if target_u.id != user.id:
+                target_role = target_u.role.role_name if target_u.role else "member"
+                target_level = ROLE_LEVELS.get(target_role, 1)
+                level_desc = "higher-level " + target_role.upper() if target_level > 1 else "other team member"
+                denial = (
+                    f"Access Denied: I cannot provide information regarding '{target_u.full_name}' ({level_desc}). "
+                    f"Team Members are only authorized to query their own personal records and assigned projects."
+                )
+                return False, denial, authorized_projects, []
+
+    # B. PM restrictions: Can know their own info and users info, but CANNOT know Admin info or other PM info
+    elif caller_level == 2:  # PM
+        # Check generic admin inquiries
+        if re.search(r'\b(admin|administrator|administrators)\b', q_lower):
+            denial = (
+                "Access Denied: As a Project Manager, you cannot access information regarding higher-level "
+                "Administrators or organization-wide executive data. You may only view your own records "
+                "and regular team members assigned to your projects."
+            )
+            return False, denial, authorized_projects, []
+
+        # Check matched users: PM cannot query Admin or other PMs
+        for target_u in matched_users:
+            if target_u.id == user.id:
+                continue
+            target_role = target_u.role.role_name if target_u.role else "member"
+            if target_role == "admin":
+                denial = (
+                    f"Access Denied: I cannot provide information regarding '{target_u.full_name}'. "
+                    f"Project Managers are not authorized to query higher-level Administrator accounts. "
+                    f"You may only query your own data and regular team members."
+                )
+                return False, denial, authorized_projects, []
+            elif target_role == "pm":
+                denial = (
+                    f"Access Denied: I cannot provide information regarding Project Manager '{target_u.full_name}'. "
+                    f"Project Managers can only query their own information and regular team members."
+                )
+                return False, denial, authorized_projects, []
+
+    # C. Admin (Level 3): Full access to everyone (Members, PMs, Admins, all projects)
+
+    return True, None, authorized_projects, matched_users
+
+def build_knowledge_context(db: Session, projects: List[Project], user: User, matched_users: List[User]) -> str:
+    """Builds a grounded text context containing project stats, hours, users, and punch sessions."""
     context_sections = []
+    caller_role = user.role.role_name if user.role else "member"
 
+    # 1. Caller User Summary
+    user_section = f"""Current User Profile:
+- Full Name: {user.full_name}
+- Email: {user.email}
+- Role: {caller_role.upper()}
+- Active Status: {'Active' if user.is_active else 'Inactive'}
+"""
+    context_sections.append(user_section)
+
+    # 2. Targeted Users Context (if authorized)
+    for u in matched_users:
+        if u.id != user.id:
+            u_role = u.role.role_name if u.role else "member"
+            total_hours = db.query(func.coalesce(func.sum(TimeEntry.hours), 0.0)).filter(
+                TimeEntry.user_id == u.id, TimeEntry.is_deleted == False
+            ).scalar()
+            context_sections.append(
+                f"Target User Record:\n- Name: {u.full_name}\n- Email: {u.email}\n- Role: {u_role}\n- Total Hours Logged (All Time): {float(total_hours):.2f} hrs"
+            )
+
+    # 3. Authorized Projects Context
     for p in projects:
         pm_name = p.assigned_pm.full_name if p.assigned_pm else (p.creator.full_name if p.creator else "Unassigned")
         members = [m.user.full_name for m in p.members if m.user]
         members_str = ", ".join(members) if members else "None currently assigned"
 
-        # Query all time entries for this project
         entries = db.query(
             TimeEntry.date,
             TimeEntry.hours,
@@ -93,7 +244,7 @@ def build_knowledge_context(db: Session, projects: List[Project], user: User) ->
 
         section = f"""Project: {p.name}
 - Client: {p.client_name}
-- Monthly Hour Cap: {float(p.monthly_hourly_cap)} hrs/month
+- Monthly Hour Cap: {float(p.monthly_hourly_cap):.0f} hrs/month
 - Budget: ${float(p.budget) if p.budget else 0.0}
 - Project Manager: {pm_name}
 - Assigned Team Members: {members_str}
@@ -109,7 +260,7 @@ async def ask_llm(context: str, query: str, user_name: str, role: str) -> Option
     system_instruction = f"""You are an accurate, polite AI Assistant for an internal Project Management and Time Tracking platform.
 Current User: {user_name} (Role: {role}).
 You MUST answer questions strictly using the provided context. If asked about information not in the context, politely state that you do not have that data.
-Never reveal data for projects not listed in the context.
+Never reveal data for projects or users not listed in the context.
 Keep answers concise, direct, and professional."""
 
     # 1. Try Gemini if configured
@@ -120,13 +271,15 @@ Keep answers concise, direct, and professional."""
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}]
             }
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.post(url, json=payload)
                 if res.status_code == 200:
                     data = res.json()
                     candidates = data.get("candidates", [])
                     if candidates:
-                        return candidates[0]["content"]["parts"][0]["text"].strip()
+                        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                        if text:
+                            return text
         except Exception:
             pass
 
@@ -143,38 +296,125 @@ Keep answers concise, direct, and professional."""
                 ],
                 "temperature": 0.2
             }
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.post(url, headers=headers, json=payload)
                 if res.status_code == 200:
                     data = res.json()
-                    return data["choices"][0]["message"]["content"].strip()
+                    text = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    if text:
+                        return text
         except Exception:
             pass
 
     return None
 
-def fallback_deterministic_rag_answer(db: Session, projects: List[Project], query: str) -> str:
+def fallback_deterministic_rag_answer(
+    db: Session,
+    caller: User,
+    authorized_projects: List[Project],
+    matched_users: List[User],
+    query: str
+) -> str:
     """
-    Deterministic NLP & RAG fallback engine when no third-party API key is present.
-    Accurately handles hours spent, PM inquiries, caps, team members, etc.
+    Deterministic Partial-RAG Engine:
+    Understands the requirement, queries DB records, and formats structured responses
+    without requiring third-party LLMs like Gemini or OpenAI.
     """
     q = query.lower()
+    caller_role = caller.role.role_name if caller.role else "member"
+    caller_level = ROLE_LEVELS.get(caller_role, 1)
 
-    if not projects:
-        return "You do not currently have access to any projects in the system."
+    # -------------------------------------------------------------
+    # 1. Self User Inquiries ("my info", "who am i", "my profile")
+    # -------------------------------------------------------------
+    if any(k in q for k in ["my info", "who am i", "my profile", "my account", "tell me about myself", "about me", "my role", "my email"]):
+        # Fetch user's assigned/managed projects
+        if caller_level == 3:  # Admin
+            proj_desc = f"All {len(authorized_projects)} organization projects (Full Admin access)"
+        elif caller_level == 2:  # PM
+            proj_desc = f"{len(authorized_projects)} managed project(s): " + ", ".join([p.name for p in authorized_projects])
+        else:  # Member
+            proj_desc = f"{len(authorized_projects)} assigned project(s): " + (", ".join([p.name for p in authorized_projects]) if authorized_projects else "None")
 
-    # Identify which authorized project the user is querying
+        # Total hours logged by caller
+        total_hrs = db.query(func.coalesce(func.sum(TimeEntry.hours), 0.0)).filter(
+            TimeEntry.user_id == caller.id, TimeEntry.is_deleted == False
+        ).scalar()
+
+        # Punch session status
+        active_punch = db.query(PunchSession).filter(
+            PunchSession.user_id == caller.id, PunchSession.is_active == True
+        ).first()
+        punch_status = f"Clocked IN since {active_punch.start_time.strftime('%H:%M UTC')} on {active_punch.project.name}" if active_punch else "Currently Clocked OUT"
+
+        return (
+            f"### User Profile: {caller.full_name}\n"
+            f"- **Email:** {caller.email}\n"
+            f"- **Role:** {caller_role.upper()}\n"
+            f"- **Status:** {'Active' if caller.is_active else 'Inactive'}\n"
+            f"- **Projects:** {proj_desc}\n"
+            f"- **Total Hours Logged (All Time):** {float(total_hrs):.1f} hrs\n"
+            f"- **Punch Clock Status:** {punch_status}"
+        )
+
+    # -------------------------------------------------------------
+    # 2. Punch Clock / Active Session Status ("punch status", "am i punched in")
+    # -------------------------------------------------------------
+    if any(k in q for k in ["punch status", "am i clocked in", "am i punched in", "my punch", "clock session", "active punch"]):
+        active_punch = db.query(PunchSession).filter(
+            PunchSession.user_id == caller.id, PunchSession.is_active == True
+        ).first()
+        if active_punch:
+            elapsed = datetime.utcnow() - active_punch.start_time
+            elapsed_hrs = elapsed.total_seconds() / 3600.0
+            return (
+                f"You are currently **Clocked IN** on **{active_punch.project.name}**.\n"
+                f"- **Start Time:** {active_punch.start_time.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+                f"- **Elapsed Time:** {elapsed_hrs:.2f} hours\n"
+                f"- **Notes:** {active_punch.notes or 'None'}"
+            )
+        else:
+            last_punch = db.query(PunchSession).filter(
+                PunchSession.user_id == caller.id, PunchSession.is_active == False
+            ).order_by(PunchSession.start_time.desc()).first()
+            last_text = f"Last clocked out on {last_punch.end_time.strftime('%Y-%m-%d %H:%M:%S UTC')}" if last_punch and last_punch.end_time else "No prior punch sessions."
+            return f"You are currently **Clocked OUT**. ({last_text})"
+
+    # -------------------------------------------------------------
+    # 3. List All Users / Directory (Admin -> All, PM -> Members)
+    # -------------------------------------------------------------
+    is_directory_query = (
+        any(k in q for k in ["list users", "all users", "show users", "who are the users", "list members", "directory", "show all"]) or
+        (("users" in q or "members" in q or "team" in q or "employees" in q) and any(w in q for w in ["list", "show", "all", "directory", "who are", "system"]))
+    )
+    if is_directory_query:
+        if caller_level == 2:  # PM
+            # Show members assigned to PM's projects
+            pm_project_ids = [p.id for p in authorized_projects]
+            member_ids = db.query(ProjectMember.user_id).filter(ProjectMember.project_id.in_(pm_project_ids)).all()
+            member_ids_list = {m[0] for m in member_ids}
+            members = db.query(User).filter(User.id.in_(member_ids_list), User.is_deleted == False).all()
+            member_lines = [f"• {m.full_name} ({m.email}) - Role: {m.role.role_name.upper() if m.role else 'MEMBER'}" for m in members]
+            return f"### Team Members in Your Managed Projects ({len(members)}):\n" + ("\n".join(member_lines) if member_lines else "No members assigned yet.")
+        elif caller_level == 3:  # Admin
+            all_users = db.query(User).filter(User.is_deleted == False).all()
+            lines = [f"• {u.full_name} ({u.email}) - Role: {u.role.role_name.upper() if u.role else 'UNKNOWN'}" for u in all_users]
+            return f"### Organization Personnel Directory ({len(all_users)} Users):\n" + "\n".join(lines)
+
+    # -------------------------------------------------------------
+    # 4. Target Project & Timeframe Resolution
+    # -------------------------------------------------------------
     matched_project = None
-    for p in projects:
+    for p in authorized_projects:
         if project_matches_query(p, q):
             matched_project = p
             break
 
-    # If only one authorized project exists and none matched explicitly, use that project
-    if not matched_project and len(projects) == 1:
-        matched_project = projects[0]
+    # If only one project is authorized and user asks generally, default to it
+    if not matched_project and len(authorized_projects) == 1 and any(w in q for w in ["project", "hours", "cap", "spent"]):
+        matched_project = authorized_projects[0]
 
-    # Check for Month/Year query (e.g. "January 2026", "this month")
+    # Timeframe extraction (Month, Year)
     months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
     target_month_num = None
     target_month_name = None
@@ -184,34 +424,136 @@ def fallback_deterministic_rag_answer(db: Session, projects: List[Project], quer
             target_month_name = m.capitalize()
             break
 
-    # Look for year (e.g. 2025, 2026)
     year_match = re.search(r'\b(202\d)\b', q)
     target_year = int(year_match.group(1)) if year_match else datetime.now().year
 
-    # 1. Project Manager questions
-    if "project manager" in q or "who is pm" in q or "who is managing" in q:
+    # -------------------------------------------------------------
+    # 5. Inquiries About Other Users (PM querying Member, or Admin querying anyone)
+    # -------------------------------------------------------------
+    target_user: Optional[User] = None
+    if matched_users:
+        non_caller_users = [u for u in matched_users if u.id != caller.id]
+        if non_caller_users:
+            target_user = non_caller_users[0]
+        elif matched_users:
+            target_user = matched_users[0]
+
+    if target_user and target_user.id != caller.id:
+        t_role = target_user.role.role_name if target_user.role else "member"
+
+        # Check if query is asking about hours logged by target user
+        if any(k in q for k in ["hours", "time logged", "hours spent", "how many hours", "timesheet", "logged"]):
+            query_filter = [TimeEntry.user_id == target_user.id, TimeEntry.is_deleted == False]
+            period_desc = "all time"
+            if target_month_num:
+                query_filter.append(extract('month', TimeEntry.date) == target_month_num)
+                query_filter.append(extract('year', TimeEntry.date) == target_year)
+                period_desc = f"{target_month_name} {target_year}"
+            elif "current month" in q or "this month" in q:
+                now = datetime.now()
+                query_filter.append(extract('month', TimeEntry.date) == now.month)
+                query_filter.append(extract('year', TimeEntry.date) == now.year)
+                period_desc = f"{now.strftime('%B %Y')}"
+
+            if matched_project:
+                query_filter.append(TimeEntry.project_id == matched_project.id)
+                period_desc += f" on {matched_project.name}"
+
+            user_hrs = db.query(func.coalesce(func.sum(TimeEntry.hours), 0.0)).filter(*query_filter).scalar()
+            return f"{target_user.full_name} logged **{float(user_hrs):.1f} hours** in {period_desc}."
+
+        # Otherwise return general personnel record
+        if t_role == "member":
+            memberships = db.query(ProjectMember).filter(ProjectMember.user_id == target_user.id).all()
+            assigned_projs = [m.project.name for m in memberships if m.project]
+            proj_str = ", ".join(assigned_projs) if assigned_projs else "None"
+        elif t_role == "pm":
+            managed = db.query(Project).filter((Project.created_by == target_user.id) | (Project.assigned_pm_id == target_user.id)).all()
+            proj_str = ", ".join([p.name for p in managed]) if managed else "None"
+        else:
+            proj_str = "All organization projects (Admin)"
+
+        total_hrs = db.query(func.coalesce(func.sum(TimeEntry.hours), 0.0)).filter(
+            TimeEntry.user_id == target_user.id, TimeEntry.is_deleted == False
+        ).scalar()
+
+        return (
+            f"### Personnel Record: {target_user.full_name}\n"
+            f"- **Email:** {target_user.email}\n"
+            f"- **Role:** {t_role.upper()}\n"
+            f"- **Account Status:** {'Active' if target_user.is_active else 'Inactive'}\n"
+            f"- **Associated Projects:** {proj_str}\n"
+            f"- **Total Hours Logged (All Time):** {float(total_hrs):.1f} hrs"
+        )
+
+    # -------------------------------------------------------------
+    # 6. Personal Hours Query ("my hours", "how many hours have I logged")
+    # -------------------------------------------------------------
+    if any(k in q for k in ["my hours", "hours logged by me", "have i logged", "my time logged", "how many hours did i log"]):
+        query_filter = [TimeEntry.user_id == caller.id, TimeEntry.is_deleted == False]
+        period_desc = "all time"
+
+        if target_month_num:
+            query_filter.append(extract('month', TimeEntry.date) == target_month_num)
+            query_filter.append(extract('year', TimeEntry.date) == target_year)
+            period_desc = f"{target_month_name} {target_year}"
+        elif "current month" in q or "this month" in q:
+            now = datetime.now()
+            query_filter.append(extract('month', TimeEntry.date) == now.month)
+            query_filter.append(extract('year', TimeEntry.date) == now.year)
+            period_desc = f"{now.strftime('%B %Y')}"
+
+        if matched_project:
+            query_filter.append(TimeEntry.project_id == matched_project.id)
+            period_desc += f" on {matched_project.name}"
+
+        total_my_hrs = db.query(func.coalesce(func.sum(TimeEntry.hours), 0.0)).filter(*query_filter).scalar()
+        return f"You logged a total of **{float(total_my_hrs):.1f} hours** in {period_desc}."
+
+    # -------------------------------------------------------------
+    # 7. Project Manager Questions ("who is project manager", "who is pm")
+    # -------------------------------------------------------------
+    if any(k in q for k in ["project manager", "who is pm", "who is managing", "pm for"]):
         if matched_project:
             pm = matched_project.assigned_pm or matched_project.creator
             pm_name = pm.full_name if pm else "Not assigned"
             return f"The Project Manager for {matched_project.name} is {pm_name}."
         else:
-            pms = [f"{p.name}: {p.assigned_pm.full_name if p.assigned_pm else 'Unassigned'}" for p in projects]
+            pms = [f"{p.name}: {p.assigned_pm.full_name if p.assigned_pm else 'Unassigned'}" for p in authorized_projects]
             return "Here are the Project Managers for your authorized projects:\n" + "\n".join(f"- {p}" for p in pms)
 
-    # 2. Hours spent / Time logged questions
-    if "how many hours" in q or "hours spent" in q or "time logged" in q or "hours" in q:
+    # -------------------------------------------------------------
+    # 8. Hours Spent / Time Logged on Project (or by a specific User on Project)
+    # -------------------------------------------------------------
+    if any(k in q for k in ["how many hours", "hours spent", "time logged", "hours"]):
+        # A. If target user specified (e.g. "hours logged by Harsh Patel on Project Alpha")
+        if target_user and matched_project:
+            query_filter = [
+                TimeEntry.project_id == matched_project.id,
+                TimeEntry.user_id == target_user.id,
+                TimeEntry.is_deleted == False
+            ]
+            period_desc = "all time"
+            if target_month_num:
+                query_filter.append(extract('month', TimeEntry.date) == target_month_num)
+                query_filter.append(extract('year', TimeEntry.date) == target_year)
+                period_desc = f"{target_month_name} {target_year}"
+            user_hrs = db.query(func.coalesce(func.sum(TimeEntry.hours), 0.0)).filter(*query_filter).scalar()
+            return f"{target_user.full_name} logged **{float(user_hrs):.1f} hours** on {matched_project.name} in {period_desc}."
+
+        # B. Overall project hours
         if matched_project:
             query_filter = [TimeEntry.project_id == matched_project.id, TimeEntry.is_deleted == False]
             period_desc = "all time"
 
             if target_month_num:
-                query_filter.append(func.extract('month', TimeEntry.date) == target_month_num)
-                query_filter.append(func.extract('year', TimeEntry.date) == target_year)
+                query_filter.append(extract('month', TimeEntry.date) == target_month_num)
+                query_filter.append(extract('year', TimeEntry.date) == target_year)
                 period_desc = f"{target_month_name} {target_year}"
             elif "current month" in q or "this month" in q:
                 now = datetime.now()
-                query_filter.append(func.extract('month', TimeEntry.date) == now.month)
-                query_filter.append(func.extract('year', TimeEntry.date) == now.year)
+                query_filter.append(extract('month', TimeEntry.date) == now.month)
+                query_filter.append(extract('year', TimeEntry.date) == now.year)
                 period_desc = f"{now.strftime('%B %Y')}"
 
             total = db.query(func.coalesce(func.sum(TimeEntry.hours), 0.0)).filter(*query_filter).scalar()
@@ -222,60 +564,81 @@ def fallback_deterministic_rag_answer(db: Session, projects: List[Project], quer
                 f"(Monthly Hour Cap: {cap:.0f} hrs)."
             )
 
-    # 3. Monthly cap questions
-    if "cap" in q or "limit" in q or "budget" in q:
+    # -------------------------------------------------------------
+    # 9. Monthly Cap / Budget Questions
+    # -------------------------------------------------------------
+    if any(k in q for k in ["cap", "limit", "budget"]):
         if matched_project:
             return f"The monthly hour cap for {matched_project.name} is {float(matched_project.monthly_hourly_cap):.0f} hours."
 
-    # 4. Team members questions
-    if "members" in q or "who is assigned" in q or "team" in q:
+    # -------------------------------------------------------------
+    # 10. Team Members Assigned to Project
+    # -------------------------------------------------------------
+    if any(k in q for k in ["members", "who is assigned", "team", "roster"]):
         if matched_project:
             member_names = [m.user.full_name for m in matched_project.members if m.user]
             if member_names:
                 return f"The following members are assigned to {matched_project.name}: {', '.join(member_names)}."
             return f"There are no members currently assigned to {matched_project.name}."
 
-    # Default summary of authorized projects
+    # -------------------------------------------------------------
+    # 11. Default Summary of Authorized Projects
+    # -------------------------------------------------------------
+    if not authorized_projects:
+        return "You do not currently have access to any projects in the system."
+
     summary_lines = []
-    for p in projects:
+    for p in authorized_projects:
         summary_lines.append(f"• {p.name} (Client: {p.client_name}, Cap: {float(p.monthly_hourly_cap):.0f} hrs/mo)")
+
+    role_scope_hint = (
+        "As an Administrator, you have complete visibility over all system users and projects."
+        if caller_level == 3 else
+        "As a Project Manager, you can query your managed projects and assigned team members."
+        if caller_level == 2 else
+        "As a Team Member, you can query your personal hours, profile, and assigned projects."
+    )
+
     return (
-        f"You have access to {len(projects)} project(s):\n"
+        f"You have access to {len(authorized_projects)} project(s):\n"
         + "\n".join(summary_lines)
-        + "\n\nYou can ask about logged hours, monthly caps, assigned project managers, or team members."
+        + f"\n\n{role_scope_hint}\n"
+        + "You can ask about logged hours, monthly caps, assigned project managers, personal timesheets, or punch status."
     )
 
 async def process_rag_query(db: Session, user: User, query: str) -> Dict[str, Any]:
-    """Main RBAC-guarded RAG entrypoint."""
-    is_allowed, denied_project_name, authorized_projects = check_rbac_permission_for_query(db, user, query)
+    """
+    Main RBAC-Guarded Partial-RAG Pipeline:
+    1. Requirement understanding & semantic entity extraction.
+    2. Strict Pre-retrieval RBAC Gatekeeper (Enforcing Member -> Self only, PM -> Self + Users, Admin -> Everyone).
+    3. Targeted DB record retrieval.
+    4. Grounded Context Construction.
+    5. Partial RAG Generation (LLM if configured, else deterministic DB synthesis).
+    """
+    is_allowed, denial_reason, authorized_projects, matched_users = check_rbac_permission_for_query(db, user, query)
 
-    # Strict RBAC enforcement: Polite Denial
+    # 1. Strict RBAC Enforcement: Polite Denial
     if not is_allowed:
-        role_label = "Project Managers" if user.role and user.role.role_name == "pm" else "Team Members"
-        denial_message = (
-            f"I cannot provide information regarding '{denied_project_name}'. "
-            f"{role_label} are only permitted to view and query their own assigned projects. "
-            f"If you believe you should have access to this project, please consult your Organization Administrator."
-        )
+        referenced_proj_names = [p.name for p in db.query(Project).all() if project_matches_query(p, query.lower())]
         return {
             "query": query,
-            "answer": denial_message,
+            "answer": denial_reason or "Access Denied: You do not have permission to view the requested resource.",
             "is_allowed": False,
-            "referenced_projects": [denied_project_name] if denied_project_name else []
+            "referenced_projects": referenced_proj_names
         }
 
-    # User is authorized - retrieve context
-    context = build_knowledge_context(db, authorized_projects, user)
+    # 2. Build Grounded Context from DB records
+    context = build_knowledge_context(db, authorized_projects, user, matched_users)
     user_role = user.role.role_name if user.role else "member"
 
-    # Try external LLM first
+    # 3. Generation: Try external LLM (Gemini / OpenAI) first
     answer = await ask_llm(context, query, user.full_name, user_role)
 
-    # If no LLM configured or call fails, use the grounded deterministic RAG solver
+    # 4. If LLM is not configured or call fails (e.g. invalid key/offline), use the Deterministic Partial-RAG Engine
     if not answer:
-        answer = fallback_deterministic_rag_answer(db, authorized_projects, query)
+        answer = fallback_deterministic_rag_answer(db, user, authorized_projects, matched_users, query)
 
-    referenced = [p.name for p in authorized_projects if p.name.lower() in query.lower()]
+    referenced = [p.name for p in authorized_projects if project_matches_query(p, query.lower())]
 
     return {
         "query": query,

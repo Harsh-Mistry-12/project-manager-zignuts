@@ -44,13 +44,31 @@ export default function AIAssistantModal({ isOpen, onClose }: AIAssistantModalPr
 
   if (!isOpen) return null;
 
-  const sampleQuestions = [
-    "How many hours spent on Project Alpha in January 2026?",
-    "Who is the project manager for Project Alpha?",
-    "Who is the project manager for Project Delta?", // PM 1 should be denied this!
-    "What is the monthly cap for Project Beta?",
-    "Who is assigned to Project Alpha?",
-  ];
+  const role = user?.role_name || "member";
+
+  const sampleQuestions = role === "admin"
+    ? [
+        "List all users in the system",
+        "Tell me about Gordon Freeman (PM)",
+        "How many hours spent on Project Alpha in January 2026?",
+        "Who is managing Project Delta?",
+        "What is the monthly cap for Project Beta?",
+      ]
+    : role === "pm"
+    ? [
+        "Tell me about my info",
+        "Tell me about Harsh Patel (Senior Dev)",
+        "How many hours did Harsh Patel log on Project Alpha in January 2026?",
+        "List users in my team",
+        "Tell me about Sarah Connor (Admin)", // Tested Denial!
+      ]
+    : [
+        "Tell me about my profile and info",
+        "How many hours have I logged in January 2026?",
+        "What is my punch status?",
+        "Who is the project manager for Project Alpha?",
+        "Tell me about Alex Vance (PM)", // Tested Denial!
+      ];
 
   const handleSend = async (textToSend?: string) => {
     const prompt = (textToSend || query).trim();

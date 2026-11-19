@@ -12,11 +12,14 @@ import {
   FileText,
   Timer,
   Layers,
+  LockKeyhole,
 } from "lucide-react";
 
 interface PunchClockProps {
   onSessionChange?: () => void;
 }
+
+const TODAY = new Date().toISOString().split("T")[0];
 
 export default function PunchClock({ onSessionChange }: PunchClockProps) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -24,13 +27,24 @@ export default function PunchClock({ onSessionChange }: PunchClockProps) {
   const [notes, setNotes] = useState<string>("");
   const [activeSession, setActiveSession] = useState<PunchSession | null>(null);
   const [dailySummary, setDailySummary] = useState<DailyPunchSummary | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
+  const [selectedDate, setSelectedDate] = useState<string>(TODAY);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Auto-dismiss success notification after 5 seconds
+  useEffect(() => {
+    if (successMsg) {
+      const timer = setTimeout(() => {
+        setSuccessMsg(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMsg]);
+
+  // True only when the user is viewing today
+  const isToday = selectedDate === TODAY;
 
   // Load assigned projects for dropdown
   const loadAssignedProjects = async () => {
@@ -185,6 +199,7 @@ export default function PunchClock({ onSessionChange }: PunchClockProps) {
             <input
               type="date"
               value={selectedDate}
+              max={TODAY}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="bg-white border border-slate-300 text-slate-800 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
@@ -215,14 +230,20 @@ export default function PunchClock({ onSessionChange }: PunchClockProps) {
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Attendance Status
               </span>
-              {activeSession ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Active Session
-                </span>
+              {isToday ? (
+                activeSession ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Active Session
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    Idle / Not Punched In
+                  </span>
+                )
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                  Idle / Not Punched In
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                  History View
                 </span>
               )}
             </div>
@@ -230,19 +251,31 @@ export default function PunchClock({ onSessionChange }: PunchClockProps) {
             {/* Timer Display */}
             <div className="my-5 sm:my-6 text-center">
               <div className="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono text-slate-900">
-                {activeSession ? formatElapsed(elapsedSeconds) : "00:00:00"}
+                {isToday && activeSession ? formatElapsed(elapsedSeconds) : "00:00:00"}
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                {activeSession ? (
+                {isToday && activeSession ? (
                   <>Started at {new Date(activeSession.start_time).toLocaleTimeString()}</>
-                ) : (
+                ) : isToday ? (
                   <>Ready to start your work session</>
+                ) : (
+                  <>Viewing history for {selectedDate}</>
                 )}
               </p>
             </div>
 
-            {/* Form Fields */}
-            {!activeSession ? (
+            {/* Punch In / Out — only available for today */}
+            {!isToday ? (
+              <div className="flex flex-col items-center gap-3 py-4 px-3 rounded-xl bg-amber-50 border border-amber-200 text-center">
+                <LockKeyhole className="w-7 h-7 text-amber-500" />
+                <p className="text-xs font-semibold text-amber-800">
+                  Punch In / Out is only allowed for today.
+                </p>
+                <p className="text-[11px] text-amber-600">
+                  Select <strong>today's date</strong> to clock in or out.
+                </p>
+              </div>
+            ) : !activeSession ? (
               <form onSubmit={handlePunchIn} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">

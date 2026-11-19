@@ -7,7 +7,7 @@
 
 ## 🚀 Quick Start with Docker (Recommended)
 
-Run a single command to bring up the database, backend, and frontend:
+Run a single command to automatically spin up the MySQL database, FastAPI backend, and Next.js frontend:
 
 ```bash
 docker compose up --build
@@ -19,20 +19,18 @@ docker compose up --build
 
 ---
 
-## 👥 Pre-seeded Demo Accounts
+## 🔑 Default Administrator Login
 
-All test accounts come pre-configured with the default password: **`Password123!`**.  
-The UI features a **"1-Click Quick Demo Sign-In"** selector on the login screen and navbar for instant switching during evaluation.
+On initial container startup, the database automatically initializes with a clean state and seeds the default Administrator account so you can log in immediately:
 
-| Role | Name | Email | Notes & Permissions |
-|---|---|---|---|
-| **Admin** | Sarah Connor | `admin@zignuts.com` | Full organization visibility, user approvals, role edits, global cap metrics, audit logs |
-| **PM 1** | Alex Vance | `pm1@zignuts.com` | Manages **Project Alpha**, **Project Beta**, and **Project Gamma** |
-| **PM 2** | Gordon Freeman | `pm2@zignuts.com` | Manages **Project Delta** (isolated from PM 1) |
-| **Member** | Harsh Patel | `dev1@zignuts.com` | Assigned to Project Alpha & Project Beta |
-| **Member** | Elena Rostova | `dev2@zignuts.com` | Assigned to Project Alpha & Project Gamma |
-| **Member** | Marcus Brody | `dev3@zignuts.com` | Assigned to Project Beta & Project Delta |
-| **Pending**| New Hire | `pending@zignuts.com` | Registered but pending Admin approval (`is_active = false`) |
+| Field | Value |
+|---|---|
+| **Email / Username** | `admin@example.com` |
+| **Password** | `Admin@123` |
+| **Role** | `admin` (Administrator) |
+| **Permissions** | Full organization access, project creation, user management & approval, cap tracking, audit logs, and global AI Assistant queries |
+
+> **Note:** The login screen at `http://localhost:3000` is already pre-filled with these credentials and also includes a **1-Click Admin Sign-In** button for instant access. From the Admin dashboard, you can create projects, approve new user registrations, and assign Project Managers and team members.
 
 ---
 

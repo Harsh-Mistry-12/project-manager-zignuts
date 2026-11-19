@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { Project, User, AuditLog, apiFetch } from "@/lib/api";
 import {
   ShieldCheck,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 
 export default function AdminPanel() {
+  const { user: currentUser } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<"projects" | "users" | "audit">("projects");
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -79,7 +81,21 @@ export default function AdminPanel() {
     loadData();
   }, []);
 
+  // Auto-dismiss success notification after 5 seconds
+  useEffect(() => {
+    if (msg?.type === "success") {
+      const timer = setTimeout(() => {
+        setMsg(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [msg]);
+
   const handleToggleUserStatus = async (user: User) => {
+    if (currentUser && user.id === currentUser.id && user.is_active) {
+      setMsg({ type: "error", text: "Admins cannot deactivate their own account." });
+      return;
+    }
     try {
       const updated = await apiFetch<User>(`/users/${user.id}`, {
         method: "PATCH",
@@ -96,6 +112,10 @@ export default function AdminPanel() {
   };
 
   const handleChangeUserRole = async (user: User, newRole: string) => {
+    if (currentUser && user.id === currentUser.id && newRole !== "admin") {
+      setMsg({ type: "error", text: "Admins cannot revoke their own admin role." });
+      return;
+    }
     try {
       const updated = await apiFetch<User>(`/users/${user.id}`, {
         method: "PATCH",
@@ -403,7 +423,7 @@ export default function AdminPanel() {
       {/* Subtab 1: All Projects & Time Logged vs Cap */}
       {activeSubTab === "projects" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <div className="pb-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="pb-4 border-b border-slate-100">
             <div>
               <h3 className="text-base font-bold text-slate-900">
                 Admin Overview: Projects & Monthly Cap Utilization
@@ -411,22 +431,6 @@ export default function AdminPanel() {
               <p className="text-xs text-slate-500">
                 Running total of hours logged vs. retainer caps for all client projects in the organization.
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowCreateUserModal(true)}
-                className="py-1.5 px-3 rounded-xl text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition flex items-center gap-1.5"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                Add User / PM
-              </button>
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="py-1.5 px-3 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 shadow-sm transition flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                New Project
-              </button>
             </div>
           </div>
 
@@ -562,51 +566,76 @@ export default function AdminPanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50 transition">
-                    <td className="py-3 px-3">
-                      <span className="font-bold text-slate-900 block">{u.full_name}</span>
-                      <span className="text-slate-500">{u.email}</span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <select
-                        value={u.role_name}
-                        onChange={(e) => handleChangeUserRole(u, e.target.value)}
-                        className="text-xs rounded-lg border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="pm">Project Manager</option>
-                        <option value="member">Member / Dev</option>
-                      </select>
-                    </td>
-                    <td className="py-3 px-3">
-                      {u.is_active ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                          <Check className="w-3 h-3" /> Approved & Active
+                {users.map((u) => {
+                  const isCurrentUser = currentUser?.id === u.id;
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-3">
+                        <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                          {u.full_name}
+                          {isCurrentUser && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                              You
+                            </span>
+                          )}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 animate-pulse">
-                          Pending Approval
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-slate-500">
-                      {new Date(u.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => handleToggleUserStatus(u)}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                          u.is_active
-                            ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
-                            : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
-                        }`}
-                      >
-                        {u.is_active ? "Deactivate" : "Approve Access"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <span className="text-slate-500">{u.email}</span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <select
+                          value={u.role_name}
+                          disabled={isCurrentUser}
+                          onChange={(e) => handleChangeUserRole(u, e.target.value)}
+                          className={`text-xs rounded-lg border px-2 py-1 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+                            isCurrentUser
+                              ? "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed"
+                              : "bg-white border-slate-300 text-slate-800"
+                          }`}
+                          title={isCurrentUser ? "Admins cannot modify their own role" : undefined}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="pm">Project Manager</option>
+                          <option value="member">Member / Dev</option>
+                        </select>
+                      </td>
+                      <td className="py-3 px-3">
+                        {u.is_active ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                            <Check className="w-3 h-3" /> Approved & Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 animate-pulse">
+                            Pending Approval
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500">
+                        {new Date(u.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        {isCurrentUser ? (
+                          <span
+                            className="inline-block px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none"
+                            title="Admins cannot deactivate their own account"
+                          >
+                            Cannot Deactivate
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleUserStatus(u)}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                              u.is_active
+                                ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
+                                : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+                            }`}
+                          >
+                            {u.is_active ? "Deactivate" : "Approve Access"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

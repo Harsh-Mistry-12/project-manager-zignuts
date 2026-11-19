@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Project, User, ProjectAnnualHeatmap, apiFetch } from "@/lib/api";
+import { Project, User, ProjectMember, ProjectAnnualHeatmap, UserProjectMetrics, apiFetch } from "@/lib/api";
 import {
   Briefcase,
   Plus,
@@ -17,6 +17,9 @@ import {
   DollarSign,
   Clock,
   Flame,
+  BarChart3,
+  ShieldAlert,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function PMPanel() {
@@ -44,6 +47,13 @@ export default function PMPanel() {
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberPassword, setNewMemberPassword] = useState("Password123!");
   const [newMemberProjectId, setNewMemberProjectId] = useState<number | "">("");
+
+  // Member Utilization Metrics Modal state
+  const [showMemberMetricsModal, setShowMemberMetricsModal] = useState<boolean>(false);
+  const [selectedMemberMetrics, setSelectedMemberMetrics] = useState<UserProjectMetrics | null>(null);
+  const [loadingMemberMetrics, setLoadingMemberMetrics] = useState<boolean>(false);
+  const [memberMetricsYear, setMemberMetricsYear] = useState<number>(new Date().getFullYear());
+  const [activeMemberObj, setActiveMemberObj] = useState<ProjectMember | null>(null);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -83,6 +93,16 @@ export default function PMPanel() {
       loadHeatmap(selectedProject.id);
     }
   }, [selectedProject?.id]);
+
+  // Auto-dismiss success notification after 5 seconds
+  useEffect(() => {
+    if (message?.type === "success") {
+      const timer = setTimeout(() => {
+        setMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
   const loadHeatmap = async (projectId: number) => {
     setLoadingHeatmap(true);
@@ -184,6 +204,25 @@ export default function PMPanel() {
     }
   };
 
+  const handleOpenMemberMetrics = async (member: ProjectMember, year?: number) => {
+    if (!selectedProject) return;
+    const targetYear = year || memberMetricsYear;
+    setActiveMemberObj(member);
+    setShowMemberMetricsModal(true);
+    setLoadingMemberMetrics(true);
+    try {
+      const data = await apiFetch<UserProjectMetrics>(
+        `/stats/project/${selectedProject.id}/user/${member.user_id}?year=${targetYear}`
+      );
+      setSelectedMemberMetrics(data);
+    } catch (err: any) {
+      console.error(err);
+      setMessage({ type: "error", text: err.message || "Failed to load member metrics" });
+    } finally {
+      setLoadingMemberMetrics(false);
+    }
+  };
+
   const renderCapBadge = (status: "normal" | "warning" | "over_cap", pct: number) => {
     switch (status) {
       case "over_cap":
@@ -272,19 +311,6 @@ export default function PMPanel() {
               Sec 4: Team Allocation ({allUsers.filter((u) => u.role_name === "member").length})
             </button>
           </div>
-
-          <button
-            onClick={() => {
-              if (selectedProject) {
-                setNewMemberProjectId(selectedProject.id);
-              }
-              setShowCreateMemberModal(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            Add New Member
-          </button>
         </div>
 
         {message && (
@@ -401,15 +427,6 @@ export default function PMPanel() {
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => {
-                          setNewMemberProjectId(selectedProject.id);
-                          setShowCreateMemberModal(true);
-                        }}
-                        className="py-1.5 px-3 rounded-xl text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition flex items-center gap-1.5"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" /> + Add Member
-                      </button>
-                      <button
                         onClick={openAssignModal}
                         className="py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition flex items-center gap-1.5"
                       >
@@ -463,20 +480,29 @@ export default function PMPanel() {
                         {selectedProject.members.map((m) => (
                           <div
                             key={m.id}
-                            className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs"
+                            onClick={() => handleOpenMemberMetrics(m)}
+                            className="group cursor-pointer flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 text-xs transition shadow-sm"
+                            title="Click to view month-wise logged hours & cap utilization"
                           >
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-slate-800 text-white font-bold flex items-center justify-center text-[10px]">
+                              <div className="w-7 h-7 rounded-full bg-slate-800 text-white font-bold flex items-center justify-center text-[10px] group-hover:bg-blue-600 transition">
                                 {m.full_name.charAt(0)}
                               </div>
                               <div>
-                                <span className="font-semibold text-slate-800 block">{m.full_name}</span>
+                                <span className="font-semibold text-slate-800 group-hover:text-blue-900 transition flex items-center gap-1">
+                                  {m.full_name}
+                                </span>
                                 <span className="text-slate-400 text-[10px]">{m.email}</span>
                               </div>
                             </div>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              Active
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Active
+                              </span>
+                              <span className="text-[10px] text-blue-600 font-semibold opacity-0 group-hover:opacity-100 transition hidden sm:inline">
+                                View &rarr;
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -572,7 +598,7 @@ export default function PMPanel() {
       ) : (
         /* Section 4: PM User Management (Allocate team members) */
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <div className="pb-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="pb-4 border-b border-slate-100">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block mb-1">
                 Sec 4: PM User Management
@@ -582,21 +608,9 @@ export default function PMPanel() {
                 Organization Team Members Allocation
               </h3>
               <p className="text-xs text-slate-500">
-                View all available developers, add new team members, and allocate them to your retainer projects.
+                View all available developers and organization team members.
               </p>
             </div>
-            <button
-              onClick={() => {
-                if (projects.length > 0 && selectedProject) {
-                  setNewMemberProjectId(selectedProject.id);
-                }
-                setShowCreateMemberModal(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition self-start sm:self-auto"
-            >
-              <UserPlus className="w-4 h-4" />
-              Add Team Member
-            </button>
           </div>
 
           <div className="mt-4 overflow-x-auto">
@@ -607,7 +621,6 @@ export default function PMPanel() {
                   <th className="py-2.5 px-3">System Role</th>
                   <th className="py-2.5 px-3">Account Status</th>
                   <th className="py-2.5 px-3">Joined Date</th>
-                  <th className="py-2.5 px-3 text-right">Quick Allocation</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -635,17 +648,6 @@ export default function PMPanel() {
                       </td>
                       <td className="py-3 px-3 text-slate-500">
                         {new Date(u.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <button
-                          onClick={() => {
-                            setActiveSubTab("projects");
-                            openAssignModal();
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
-                        >
-                          Assign to Project
-                        </button>
                       </td>
                     </tr>
                   ))}
@@ -938,6 +940,201 @@ export default function PMPanel() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Member Month-Wise Utilization Modal */}
+      {showMemberMetricsModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 my-8">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-sm">
+                  {activeMemberObj?.full_name.charAt(0)}
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    {activeMemberObj?.full_name}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {activeMemberObj?.email} • Project:{" "}
+                    <strong className="text-slate-700">{selectedProject?.name}</strong>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Year selector */}
+                <select
+                  value={memberMetricsYear}
+                  onChange={(e) => {
+                    const y = Number(e.target.value);
+                    setMemberMetricsYear(y);
+                    if (activeMemberObj) {
+                      handleOpenMemberMetrics(activeMemberObj, y);
+                    }
+                  }}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={2026}>2026</option>
+                  <option value={2025}>2025</option>
+                  <option value={2024}>2024</option>
+                </select>
+                <button
+                  onClick={() => setShowMemberMetricsModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {loadingMemberMetrics ? (
+              <div className="py-16 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                Loading month-wise logged hours & utilization...
+              </div>
+            ) : selectedMemberMetrics ? (
+              <div className="space-y-5 pt-4">
+                {/* Top 4 KPI Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                      This Month
+                    </span>
+                    <span className="text-lg font-extrabold text-blue-700 block mt-0.5">
+                      {selectedMemberMetrics.current_month_hours}h
+                    </span>
+                    <span className="text-[10px] text-slate-400">Hours logged</span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Cap Utilization
+                    </span>
+                    <span
+                      className={`text-lg font-extrabold block mt-0.5 ${
+                        selectedMemberMetrics.current_month_utilization > 100
+                          ? "text-red-600"
+                          : selectedMemberMetrics.current_month_utilization >= 90
+                          ? "text-amber-600"
+                          : "text-emerald-600"
+                      }`}
+                    >
+                      {selectedMemberMetrics.current_month_utilization}%
+                    </span>
+                    <span className="text-[10px] text-slate-400">Current month</span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Year Total
+                    </span>
+                    <span className="text-lg font-extrabold text-slate-900 block mt-0.5">
+                      {selectedMemberMetrics.total_year_hours}h
+                    </span>
+                    <span className="text-[10px] text-slate-400">Total in {selectedMemberMetrics.months[0]?.year}</span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Monthly Cap
+                    </span>
+                    <span className="text-lg font-extrabold text-slate-900 block mt-0.5">
+                      {selectedMemberMetrics.monthly_hourly_cap}h
+                    </span>
+                    <span className="text-[10px] text-slate-400">Project limit</span>
+                  </div>
+                </div>
+
+                {/* Month-Wise Breakdown */}
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                      Month-wise Breakdown & Utilization ({selectedMemberMetrics.months[0]?.year})
+                    </h4>
+                    <span className="text-[11px] text-slate-400">
+                      Cap: {selectedMemberMetrics.monthly_hourly_cap} hrs/month
+                    </span>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px] sticky top-0">
+                        <tr>
+                          <th className="py-2.5 px-3.5">Month</th>
+                          <th className="py-2.5 px-3 text-right">Logged Hours</th>
+                          <th className="py-2.5 px-3">Utilization</th>
+                          <th className="py-2.5 px-3 text-right">Cap %</th>
+                          <th className="py-2.5 px-3 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedMemberMetrics.months.map((m) => {
+                          const progressWidth = Math.min(100, Math.max(0, m.cap_utilization));
+                          return (
+                            <tr key={m.month} className="hover:bg-slate-50/70 transition">
+                              <td className="py-2.5 px-3.5 font-medium text-slate-800">
+                                {m.month_name}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
+                                {m.logged_hours > 0 ? `${m.logged_hours}h` : "--"}
+                              </td>
+                              <td className="py-2.5 px-3 w-36">
+                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      m.status === "over_cap"
+                                        ? "bg-red-500"
+                                        : m.status === "warning"
+                                        ? "bg-amber-500"
+                                        : "bg-emerald-500"
+                                    }`}
+                                    style={{ width: `${progressWidth}%` }}
+                                  />
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-700">
+                                {m.cap_utilization}%
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                {m.logged_hours === 0 ? (
+                                  <span className="text-[10px] text-slate-400">--</span>
+                                ) : m.status === "over_cap" ? (
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
+                                    Over Cap
+                                  </span>
+                                ) : m.status === "warning" ? (
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    Warning
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    Healthy
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Footer info notice */}
+                <div className="pt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-100">
+                  <span>Cap Utilization = (Logged Hours / Monthly Cap) × 100%</span>
+                  <button
+                    onClick={() => setShowMemberMetricsModal(false)}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

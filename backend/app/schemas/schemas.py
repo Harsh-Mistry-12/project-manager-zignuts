@@ -172,6 +172,28 @@ class ProjectAnnualHeatmap(BaseModel):
     monthly_hourly_cap: float
     months: List[HeatmapMonth]
 
+class UserMonthMetric(BaseModel):
+    month: int
+    year: int
+    month_name: str
+    logged_hours: float
+    monthly_cap: float
+    cap_utilization: float
+    status: str  # 'normal', 'warning', 'over_cap'
+
+class UserProjectMetricsResponse(BaseModel):
+    user_id: int
+    user_name: str
+    user_email: str
+    project_id: int
+    project_name: str
+    client_name: str
+    monthly_hourly_cap: float
+    current_month_hours: float
+    current_month_utilization: float
+    total_year_hours: float
+    months: List[UserMonthMetric]
+
 # ----------------- AI Assistant (RAG) -----------------
 class AIQueryRequest(BaseModel):
     query: str

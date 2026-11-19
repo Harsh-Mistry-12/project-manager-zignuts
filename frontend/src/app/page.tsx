@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
 import AdminPanel from "@/components/AdminPanel";
 import PMPanel from "@/components/PMPanel";
+import UserDashboard from "@/components/UserDashboard";
 import PunchClock from "@/components/PunchClock";
 import TimeTracker from "@/components/TimeTracker";
 import AIAssistantModal from "@/components/AIAssistantModal";
@@ -31,8 +32,8 @@ export default function Home() {
 
   // Auth form states
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
-  const [email, setEmail] = useState<string>("admin@zignuts.com");
-  const [password, setPassword] = useState<string>("Password123!");
+  const [email, setEmail] = useState<string>("admin@example.com");
+  const [password, setPassword] = useState<string>("Admin@123");
   const [fullName, setFullName] = useState<string>("");
   const [regRole, setRegRole] = useState<string>("member");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -207,57 +208,27 @@ export default function Home() {
               </div>
             </form>
 
-            {/* Quick 1-Click Test Personas */}
+            {/* Quick 1-Click Default Admin Sign-In */}
             <div className="mt-6 pt-5 border-t border-white/10">
               <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5 mb-2.5">
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
-                1-Click Quick Demo Sign-In:
+                Default Admin Login:
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                <button
-                  onClick={() => quickLogin("admin@zignuts.com")}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-left transition flex items-center gap-2"
-                >
-                  <ShieldCheck className="w-4 h-4 text-purple-400" />
-                  <div>
-                    <span className="font-bold block text-white">Admin</span>
-                    <span className="text-slate-400 text-[10px]">Sarah Connor</span>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => quickLogin("pm1@zignuts.com")}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-left transition flex items-center gap-2"
-                >
-                  <Briefcase className="w-4 h-4 text-blue-400" />
-                  <div>
-                    <span className="font-bold block text-white">PM 1</span>
-                    <span className="text-slate-400 text-[10px]">Alex Vance</span>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => quickLogin("pm2@zignuts.com")}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-left transition flex items-center gap-2"
-                >
-                  <Briefcase className="w-4 h-4 text-blue-300" />
-                  <div>
-                    <span className="font-bold block text-white">PM 2</span>
-                    <span className="text-slate-400 text-[10px]">Gordon Freeman</span>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => quickLogin("dev1@zignuts.com")}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-left transition flex items-center gap-2"
-                >
-                  <UserCheck className="w-4 h-4 text-emerald-400" />
-                  <div>
-                    <span className="font-bold block text-white">Employee</span>
-                    <span className="text-slate-400 text-[10px]">Harsh Patel</span>
-                  </div>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail("admin@example.com");
+                  setPassword("Admin@123");
+                  login("admin@example.com", "Admin@123");
+                }}
+                className="w-full p-2.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-left transition flex items-center gap-2.5 cursor-pointer"
+              >
+                <ShieldCheck className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                <div>
+                  <span className="font-bold block text-white text-xs">Admin (Full Access)</span>
+                  <span className="text-slate-300 text-[10px]">Email: <code className="text-amber-300">admin@example.com</code> | Pass: <code className="text-amber-300">Admin@123</code></span>
+                </div>
+              </button>
             </div>
           </div>
         </div>
@@ -308,10 +279,7 @@ export default function Home() {
             {user.role_name === "admin" && <AdminPanel />}
             {user.role_name === "pm" && <PMPanel />}
             {user.role_name === "member" && (
-              <div className="space-y-6">
-                <PunchClock onSessionChange={refreshActivePunch} />
-                <TimeTracker />
-              </div>
+              <UserDashboard onNavigateTab={setActiveTab} />
             )}
           </>
         )}

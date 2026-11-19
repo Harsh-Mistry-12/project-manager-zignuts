@@ -17,7 +17,7 @@ export default function TimeTracker() {
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [projectId, setProjectId] = useState<number | "">("");
   const [date, setDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [hours, setHours] = useState<number | "">("");
+  const [hours, setHours] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -41,6 +41,16 @@ export default function TimeTracker() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-dismiss success notification after 5 seconds
+  useEffect(() => {
+    if (message?.type === "success") {
+      const timer = setTimeout(() => {
+        setMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
   const handleCreateEntry = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,13 +174,13 @@ export default function TimeTracker() {
                 </label>
                 <input
                   type="number"
-                  step="0.25"
+                  step="any"
                   min="0.1"
                   max="24"
                   required
                   placeholder="8.0"
                   value={hours}
-                  onChange={(e) => setHours(e.target.value ? Number(e.target.value) : "")}
+                  onChange={(e) => setHours(e.target.value)}
                   className="w-full text-sm rounded-xl border border-slate-300 px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>

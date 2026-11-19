@@ -7,8 +7,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-project_manager_db}
-      MYSQL_USER: ${MYSQL_USER:-app_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app_password}
+      MYSQL_USER: ${DOCKER_MYSQL_USER:-app_user}
+      MYSQL_PASSWORD: ${DOCKER_MYSQL_PASSWORD:-app_password}
     ports:
       - "3306:3306"
     volumes:
@@ -32,8 +32,8 @@ services:
     environment:
       MYSQL_HOST: db
       MYSQL_PORT: 3306
-      MYSQL_USER: ${MYSQL_USER:-app_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app_password}
+      MYSQL_USER: ${DOCKER_MYSQL_USER:-app_user}
+      MYSQL_PASSWORD: ${DOCKER_MYSQL_PASSWORD:-app_password}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-project_manager_db}
       SECRET_KEY: ${SECRET_KEY:-super-secret-key-change-in-production-123456789}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
