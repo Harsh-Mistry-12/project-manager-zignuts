@@ -148,41 +148,43 @@ export default function Navbar({ onOpenAI, activeTab, setActiveTab, activePunchS
               <span className="sm:hidden font-semibold">AI</span>
             </button>
 
-            {/* Quick Demo Role Switcher */}
-            <div className="relative">
-              <button
-                onClick={() => setShowDemoAccounts(!showDemoAccounts)}
-                className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition"
-                title="Switch demo personas"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-600" />
-                <span className="hidden md:inline">Switch Role</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
+            {/* Quick Demo Role Switcher - Strictly restricted to Admin only (Hidden from PM and Team Members) */}
+            {user.role_name === "admin" && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowDemoAccounts(!showDemoAccounts)}
+                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition"
+                  title="Admin preview personas"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden md:inline">Admin: Switch View</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
 
-              {showDemoAccounts && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="px-3 py-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
-                    Switch Test Persona
+                {showDemoAccounts && (
+                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2">
+                    <div className="px-3 py-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                      Admin Persona Preview
+                    </div>
+                    {demoAccounts.map((acct) => (
+                      <button
+                        key={acct.email}
+                        onClick={() => {
+                          setShowDemoAccounts(false);
+                          quickLogin(acct.email);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center justify-between transition ${
+                          user.email === acct.email ? "bg-indigo-50 font-bold text-indigo-900" : "text-slate-700"
+                        }`}
+                      >
+                        <span className="truncate">{acct.label}</span>
+                        {user.email === acct.email && <span className="text-indigo-600 font-bold">✓</span>}
+                      </button>
+                    ))}
                   </div>
-                  {demoAccounts.map((acct) => (
-                    <button
-                      key={acct.email}
-                      onClick={() => {
-                        setShowDemoAccounts(false);
-                        quickLogin(acct.email);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center justify-between transition ${
-                        user.email === acct.email ? "bg-indigo-50 font-bold text-indigo-900" : "text-slate-700"
-                      }`}
-                    >
-                      <span className="truncate">{acct.label}</span>
-                      {user.email === acct.email && <span className="text-indigo-600 font-bold">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Desktop User Profile dropdown */}
             <div className="relative hidden sm:block">
