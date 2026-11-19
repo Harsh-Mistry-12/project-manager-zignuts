@@ -42,6 +42,13 @@ export default function AdminPanel() {
   const [editPmId, setEditPmId] = useState<number | "">("");
   const [editMemberIds, setEditMemberIds] = useState<number[]>([]);
 
+  // Create User Modal state (Admin)
+  const [showCreateUserModal, setShowCreateUserModal] = useState<boolean>(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("Password123!");
+  const [newUserRole, setNewUserRole] = useState("pm");
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -101,6 +108,38 @@ export default function AdminPanel() {
       });
     } catch (err: any) {
       setMsg({ type: "error", text: err.message || "Failed to update user role" });
+    }
+  };
+
+  // Admin Create PM or User
+  const handleAdminCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMsg(null);
+    try {
+      const created = await apiFetch<User>("/users", {
+        method: "POST",
+        body: JSON.stringify({
+          full_name: newUserName,
+          email: newUserEmail,
+          password: newUserPassword || undefined,
+          role_name: newUserRole,
+        }),
+      });
+      setMsg({
+        type: "success",
+        text: `User "${created.full_name}" created with role ${created.role_name.toUpperCase()}!`,
+      });
+      setShowCreateUserModal(false);
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("Password123!");
+      setNewUserRole("pm");
+      await loadData();
+    } catch (err: any) {
+      setMsg({ type: "error", text: err.message || "Failed to create user" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -459,15 +498,23 @@ export default function AdminPanel() {
       {/* Subtab 2: Staff Access, Approvals & Role Management */}
       {activeSubTab === "users" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <div className="pb-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="pb-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-purple-600" />
                 Staff Access & Role Management (RBAC)
               </h3>
               <p className="text-xs text-slate-500">
                 Approve newly registered staff members, deactivate accounts, and grant PM or Admin permissions.
               </p>
             </div>
+            <button
+              onClick={() => setShowCreateUserModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 shadow-sm transition self-start sm:self-auto"
+            >
+              <UserPlus className="w-4 h-4" />
+              Add User / PM
+            </button>
           </div>
 
           <div className="mt-4 overflow-x-auto">
@@ -587,6 +634,107 @@ export default function AdminPanel() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Add User / PM Modal */}
+      {showCreateUserModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">Admin: Add New Staff User</h3>
+              </div>
+              <button
+                onClick={() => setShowCreateUserModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminCreateUser} className="space-y-4 py-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sarah Connor"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  Work Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="sarah@example.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  Initial Password
+                </label>
+                <input
+                  type="text"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  placeholder="Password123!"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs text-slate-900"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Default password provided. User can change later.</p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  System Role (RBAC) *
+                </label>
+                <select
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs text-slate-900 bg-white"
+                >
+                  <option value="pm">Project Manager (PM) - Project & Team Management</option>
+                  <option value="member">Member / Dev - Punch In & Time Logging</option>
+                  <option value="admin">System Administrator</option>
+                </select>
+                <p className="text-[10px] text-purple-700 bg-purple-50 p-2 rounded-lg mt-2">
+                  Admin privilege allows creating PMs, Members, and Admins. Created accounts are pre-approved and active immediately.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateUserModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-200"
+                >
+                  {loading ? "Creating..." : "Create Staff User"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

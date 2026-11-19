@@ -38,6 +38,13 @@ export default function PMPanel() {
   const [showAssignModal, setShowAssignModal] = useState<boolean>(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
 
+  // Create Team Member Modal state (PM)
+  const [showCreateMemberModal, setShowCreateMemberModal] = useState<boolean>(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberPassword, setNewMemberPassword] = useState("Password123!");
+  const [newMemberProjectId, setNewMemberProjectId] = useState<number | "">("");
+
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -113,6 +120,39 @@ export default function PMPanel() {
       setSelectedProject(created);
     } catch (err: any) {
       setMessage({ type: "error", text: err.message || "Failed to create project" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePMCreateMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+    try {
+      const created = await apiFetch<User>("/users", {
+        method: "POST",
+        body: JSON.stringify({
+          full_name: newMemberName,
+          email: newMemberEmail,
+          password: newMemberPassword || undefined,
+          role_name: "member",
+          initial_project_id: newMemberProjectId ? Number(newMemberProjectId) : undefined,
+        }),
+      });
+      setMessage({
+        type: "success",
+        text: `Team Member "${created.full_name}" created successfully and assigned!`,
+      });
+      setShowCreateMemberModal(false);
+      setNewMemberName("");
+      setNewMemberEmail("");
+      setNewMemberPassword("Password123!");
+      setNewMemberProjectId("");
+      await loadUsers();
+      await loadProjects();
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message || "Failed to create team member" });
     } finally {
       setLoading(false);
     }
@@ -493,18 +533,31 @@ export default function PMPanel() {
       ) : (
         /* Section 4: PM User Management (Allocate team members) */
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <div className="pb-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="pb-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block mb-1">
                 Sec 4: PM User Management
               </span>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
                 Organization Team Members Allocation
               </h3>
               <p className="text-xs text-slate-500">
-                View all available developers and staff across the organization to assign to your retainer projects.
+                View all available developers, add new team members, and allocate them to your retainer projects.
               </p>
             </div>
+            <button
+              onClick={() => {
+                if (projects.length > 0 && selectedProject) {
+                  setNewMemberProjectId(selectedProject.id);
+                }
+                setShowCreateMemberModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition self-start sm:self-auto"
+            >
+              <UserPlus className="w-4 h-4" />
+              Add Team Member
+            </button>
           </div>
 
           <div className="mt-4 overflow-x-auto">
@@ -729,6 +782,110 @@ export default function PMPanel() {
                 Save Assignments
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PM Add Team Member Modal */}
+      {showCreateMemberModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">PM: Add Team Member</h3>
+              </div>
+              <button
+                onClick={() => setShowCreateMemberModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePMCreateMember} className="space-y-4 py-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Alex Rivera"
+                  value={newMemberName}
+                  onChange={(e) => setNewMemberName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  Work Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="alex.rivera@example.com"
+                  value={newMemberEmail}
+                  onChange={(e) => setNewMemberEmail(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  Initial Password
+                </label>
+                <input
+                  type="text"
+                  value={newMemberPassword}
+                  onChange={(e) => setNewMemberPassword(e.target.value)}
+                  placeholder="Password123!"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs text-slate-900"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Default password provided. Member can change later.</p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wide mb-1">
+                  Assign to Project (Optional)
+                </label>
+                <select
+                  value={newMemberProjectId}
+                  onChange={(e) => setNewMemberProjectId(e.target.value ? Number(e.target.value) : "")}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs text-slate-900 bg-white"
+                >
+                  <option value="">-- No initial project assignment --</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.client_name})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-blue-700 bg-blue-50 p-2 rounded-lg mt-2">
+                  Role will be created as <strong>Member / Dev</strong> with active status. PMs are permitted to add team members to their managed projects.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateMemberModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200"
+                >
+                  {loading ? "Adding..." : "Add Member"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

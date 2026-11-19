@@ -222,3 +222,60 @@ def test_13_audit_trail_recorded():
     actions = [log["action"] for log in logs]
     assert "USER_LOGIN" in actions
     assert "AI_QUERY_DENIED" in actions
+
+def test_14_admin_can_add_pm_and_users():
+    """Verify Admin can create both PMs and regular users."""
+    import uuid
+    uid = uuid.uuid4().hex[:6]
+    token_admin = get_token("admin@zignuts.com").json()["access_token"]
+
+    # 1. Admin creates a new PM
+    res_pm = client.post("/api/v1/users", headers={"Authorization": f"Bearer {token_admin}"}, json={
+        "full_name": "New PM Lisa",
+        "email": f"lisa_pm_{uid}@zignuts.com",
+        "role_name": "pm"
+    })
+    assert res_pm.status_code == 200
+    assert res_pm.json()["role_name"] == "pm"
+    assert res_pm.json()["is_active"] is True
+
+    # 2. Admin creates a new Member
+    res_member = client.post("/api/v1/users", headers={"Authorization": f"Bearer {token_admin}"}, json={
+        "full_name": "New Dev Dave",
+        "email": f"dave_dev_{uid}@zignuts.com",
+        "role_name": "member"
+    })
+    assert res_member.status_code == 200
+    assert res_member.json()["role_name"] == "member"
+
+def test_15_pm_can_add_users_but_not_pm_or_admin():
+    """Verify PM can create regular users, but is forbidden from creating PMs or Admins."""
+    import uuid
+    uid = uuid.uuid4().hex[:6]
+    token_pm1 = get_token("pm1@zignuts.com").json()["access_token"]
+
+    # 1. PM creates a regular user (member) -> Allowed
+    res_ok = client.post("/api/v1/users", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "full_name": "Junior Dev Kevin",
+        "email": f"kevin_dev_{uid}@zignuts.com",
+        "role_name": "member"
+    })
+    assert res_ok.status_code == 200
+    assert res_ok.json()["role_name"] == "member"
+
+    # 2. PM attempts to create a PM -> Forbidden (403)
+    res_pm_denied = client.post("/api/v1/users", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "full_name": "Rogue PM Attempt",
+        "email": f"rogue_pm_{uid}@zignuts.com",
+        "role_name": "pm"
+    })
+    assert res_pm_denied.status_code == 403
+    assert "only permitted to create team members" in res_pm_denied.json()["detail"]
+
+    # 3. PM attempts to create an Admin -> Forbidden (403)
+    res_admin_denied = client.post("/api/v1/users", headers={"Authorization": f"Bearer {token_pm1}"}, json={
+        "full_name": "Rogue Admin Attempt",
+        "email": f"rogue_admin_{uid}@zignuts.com",
+        "role_name": "admin"
+    })
+    assert res_admin_denied.status_code == 403

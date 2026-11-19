@@ -18,6 +18,13 @@ class UserCreate(BaseModel):
     full_name: str = Field(min_length=2)
     role_name: Optional[str] = "member"  # 'admin', 'pm', 'member'
 
+class StaffCreateUser(BaseModel):
+    email: EmailStr
+    full_name: str = Field(min_length=2)
+    password: Optional[str] = Field(default="Password123!", min_length=6)
+    role_name: Optional[str] = "member"  # 'admin', 'pm', 'member'
+    initial_project_id: Optional[int] = None
+
 class UserRoleUpdate(BaseModel):
     role_name: Optional[str] = None
     is_active: Optional[bool] = None
