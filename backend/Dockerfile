@@ -4,7 +4,8 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    MYSQL_HOST=db
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
