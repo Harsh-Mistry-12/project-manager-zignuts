@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
 
     # Database
-    MYSQL_HOST: str = os.getenv("MYSQL_HOST", "localhost")
+    MYSQL_HOST: str = os.getenv("MYSQL_HOST", "db" if os.path.exists("/.dockerenv") else "localhost")
     MYSQL_PORT: int = int(os.getenv("MYSQL_PORT", "3306"))
     MYSQL_USER: str = os.getenv("MYSQL_USER", "app_user")
     MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "app_password")
